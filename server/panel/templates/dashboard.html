@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% set active_page = "dashboard" %}
+{% block title %}داشبورد - پنل مدیریت{% endblock %}
+{% block topbar_title %}داشبورد{% endblock %}
+
+{% block content %}
+<div class="stats-row" id="stats-row">
+  <div class="stat-card"><div class="stat-label">کل لایسنس‌ها</div><div class="stat-value accent" id="s-total">—</div></div>
+  <div class="stat-card"><div class="stat-label">لایسنس فعال</div><div class="stat-value success" id="s-active">—</div></div>
+  <div class="stat-card"><div class="stat-label">محصولات</div><div class="stat-value" id="s-products">—</div></div>
+  <div class="stat-card"><div class="stat-label">اتصال‌های زنده (WS)</div><div class="stat-value accent" id="s-ws">—</div></div>
+  <div class="stat-card"><div class="stat-label">هشدار دستکاری</div><div class="stat-value danger" id="s-tamper">—</div></div>
+</div>
+
+<div class="card">
+  <div class="card-title">لایسنس‌های اخیر</div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>کلید لایسنس</th>
+          <th>محصول</th>
+          <th>مشتری</th>
+          <th>وضعیت</th>
+          <th>انقضا</th>
+          <th>سیت‌ها</th>
+          <th>عملیات</th>
+        </tr>
+      </thead>
+      <tbody id="recent-table"></tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadDashboard() {
+  const stats = await api('/admin/api/stats');
+  if (!stats) return;
+  document.getElementById('s-total').textContent = stats.total_licenses;
+  document.getElementById('s-active').textContent = stats.active_licenses;
+  document.getElementById('s-products').textContent = stats.total_products;
+  document.getElementById('s-ws').textContent = stats.active_ws_connections;
+  document.getElementById('s-tamper').textContent = stats.tamper_alerts;
+
+  const licenses = await api('/admin/api/licenses?limit=10');
+  if (!licenses) return;
+  const tbody = document.getElementById('recent-table');
+  tbody.innerHTML = licenses.map(l => `
+    <tr>
+      <td class="font-mono">${l.key}</td>
+      <td>${l.product_name || l.product_id.slice(0,8)}</td>
+      <td>${l.customer_name || l.customer_email || '<span class="text-muted">—</span>'}</td>
+      <td>${statusBadge(l.status)}</td>
+      <td class="text-muted">${l.expires_at ? new Date(l.expires_at).toLocaleDateString('fa-IR') : 'بی‌نهایت'}</td>
+      <td>${l.active_seats}/${l.max_seats}</td>
+      <td>
+        <a href="/panel/licenses?id=${l.id}" class="btn btn-ghost btn-sm">مشاهده</a>
+      </td>
+    </tr>
+  `).join('');
+}
+loadDashboard();
+setInterval(loadDashboard, 30000); // refresh every 30s
+</script>
+{% endblock %}

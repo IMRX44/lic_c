@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% set active_page = "products" %}
+{% block title %}محصولات - پنل مدیریت{% endblock %}
+{% block topbar_title %}مدیریت محصولات{% endblock %}
+
+{% block content %}
+<div class="flex items-center gap-4 mb-4">
+  <div style="flex:1"></div>
+  <button class="btn btn-primary" onclick="openCreate()">+ محصول جدید</button>
+</div>
+
+<div class="card" style="padding:0">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>نام</th>
+          <th>شناسه (slug)</th>
+          <th>توضیحات</th>
+          <th>وضعیت</th>
+          <th>تاریخ ایجاد</th>
+          <th>عملیات</th>
+        </tr>
+      </thead>
+      <tbody id="prod-table"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="create-modal">
+  <div class="modal">
+    <div class="modal-title">محصول جدید</div>
+    <div class="form-group">
+      <label>نام محصول</label>
+      <input type="text" id="new-name" placeholder="مثلاً: Port Scanner Pro" />
+    </div>
+    <div class="form-group">
+      <label>شناسه (slug) - حروف انگلیسی و خط تیره</label>
+      <input type="text" id="new-slug" placeholder="port-scanner-pro" />
+    </div>
+    <div class="form-group">
+      <label>توضیحات</label>
+      <textarea id="new-desc" rows="2"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">انصراف</button>
+      <button class="btn btn-primary" onclick="createProduct()">ایجاد</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="key-modal">
+  <div class="modal">
+    <div class="modal-title">کلید رمزگذاری هسته</div>
+    <p style="color:var(--text-muted);font-size:.85rem;margin-bottom:12px">
+      این کلید AES-256 برای رمزگذاری هسته‌ی برنامه استفاده می‌شود.
+      آن را در جای امن نگه دارید.
+    </p>
+    <div class="form-group">
+      <label>کلید (hex)</label>
+      <input type="text" id="key-value" readonly class="font-mono" />
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="copyKey()">کپی کلید</button>
+      <button class="btn btn-primary" onclick="document.getElementById('key-modal').classList.remove('open')">بستن</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadProducts() {
+  const prods = await api('/admin/api/products') || [];
+  document.getElementById('prod-table').innerHTML = prods.map(p => `
+    <tr>
+      <td>${p.name}</td>
+      <td class="font-mono">${p.slug}</td>
+      <td class="text-muted">${p.description||'—'}</td>
+      <td>${p.is_active ? '<span class="badge badge-success">فعال</span>' : '<span class="badge badge-muted">غیرفعال</span>'}</td>
+      <td class="text-muted" style="font-size:.8rem">${new Date(p.created_at).toLocaleDateString('fa-IR')}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick="showKey('${p.id}')">نمایش کلید هسته</button></td>
+    </tr>
+  `).join('');
+}
+
+function openCreate() {
+  document.getElementById('create-modal').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('create-modal').classList.remove('open');
+}
+
+async function createProduct() {
+  const body = {
+    name: document.getElementById('new-name').value,
+    slug: document.getElementById('new-slug').value,
+    description: document.getElementById('new-desc').value || null,
+  };
+  try {
+    await api('/admin/api/products', { method: 'POST', body: JSON.stringify(body) });
+    toast('محصول ساخته شد', 'success');
+    closeModal();
+    loadProducts();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function showKey(id) {
+  try {
+    const r = await api(`/admin/api/products/${id}/key`);
+    document.getElementById('key-value').value = r.core_key_hex;
+    document.getElementById('key-modal').classList.add('open');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+function copyKey() {
+  navigator.clipboard.writeText(document.getElementById('key-value').value);
+  toast('کپی شد', 'success');
+}
+
+loadProducts();
+</script>
+{% endblock %}

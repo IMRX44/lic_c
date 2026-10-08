@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% set active_page = "audit" %}
+{% block title %}لاگ فعالیت - پنل مدیریت{% endblock %}
+{% block topbar_title %}لاگ فعالیت{% endblock %}
+
+{% block content %}
+<div class="card" style="padding:0">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>زمان</th>
+          <th>عملیات</th>
+          <th>لایسنس</th>
+          <th>IP</th>
+          <th>جزئیات</th>
+        </tr>
+      </thead>
+      <tbody id="audit-table"></tbody>
+    </table>
+  </div>
+  <div style="padding:16px;border-top:1px solid var(--border);text-align:center">
+    <button class="btn btn-ghost btn-sm" onclick="loadMore()">بارگذاری بیشتر</button>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let skip = 0;
+const limit = 50;
+
+const actionMap = {
+  license_created: ['badge-info', 'ایجاد لایسنس'],
+  license_activated: ['badge-success', 'فعال‌سازی'],
+  license_suspended: ['badge-warning', 'تعلیق'],
+  license_revoked: ['badge-danger', 'لغو'],
+  license_renewed: ['badge-success', 'تمدید'],
+  hwid_reset: ['badge-info', 'ریست HWID'],
+  session_killed: ['badge-warning', 'قطع سشن'],
+  seats_changed: ['badge-info', 'تغییر سیت'],
+  admin_login: ['badge-success', 'ورود ادمین'],
+  admin_login_failed: ['badge-danger', 'ورود ناموفق'],
+  tamper_alert: ['badge-danger', '⚠ هشدار دستکاری'],
+  product_created: ['badge-info', 'ایجاد محصول'],
+};
+
+async function loadAudit(append = false) {
+  const logs = await api(`/admin/api/audit-log?skip=${skip}&limit=${limit}`) || [];
+  if (!append) document.getElementById('audit-table').innerHTML = '';
+  const tbody = document.getElementById('audit-table');
+  tbody.innerHTML += logs.map(l => {
+    const [cls, label] = actionMap[l.action] || ['badge-muted', l.action];
+    return `<tr>
+      <td class="text-muted" style="font-size:.8rem;white-space:nowrap">${new Date(l.created_at).toLocaleString('fa-IR')}</td>
+      <td><span class="badge ${cls}">${label}</span></td>
+      <td class="font-mono text-muted" style="font-size:.78rem">${l.license_id ? l.license_id.slice(0,12)+'...' : '—'}</td>
+      <td class="text-muted" style="font-size:.8rem">${l.ip_address||'—'}</td>
+      <td class="text-muted" style="font-size:.8rem">${l.detail||'—'}</td>
+    </tr>`;
+  }).join('');
+  skip += logs.length;
+}
+
+function loadMore() { loadAudit(true); }
+loadAudit();
+</script>
+{% endblock %}

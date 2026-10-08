@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}پنل مدیریت لایسنس{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0f1117;
+      --bg2: #161b27;
+      --bg3: #1e2433;
+      --border: #2a3147;
+      --accent: #6366f1;
+      --accent-hover: #818cf8;
+      --success: #22c55e;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --text: #e2e8f0;
+      --text-muted: #94a3b8;
+      --radius: 10px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 14px; }
+    body {
+      font-family: 'Vazirmatn', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: 240px;
+      min-height: 100vh;
+      background: var(--bg2);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 0;
+      flex-shrink: 0;
+    }
+    .sidebar-logo {
+      padding: 20px 20px 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .sidebar-logo svg { width: 24px; height: 24px; }
+    .sidebar-nav { padding: 12px 0; flex: 1; }
+    .nav-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 20px;
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: .92rem;
+      border-right: 3px solid transparent;
+      transition: all .15s;
+    }
+    .nav-item:hover, .nav-item.active {
+      color: var(--text);
+      background: var(--bg3);
+      border-right-color: var(--accent);
+    }
+    .nav-item svg { width: 18px; height: 18px; flex-shrink: 0; }
+    .sidebar-footer {
+      padding: 16px 20px;
+      border-top: 1px solid var(--border);
+      font-size: .8rem;
+      color: var(--text-muted);
+    }
+
+    /* Main */
+    .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .topbar {
+      height: 56px;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      gap: 16px;
+      flex-shrink: 0;
+    }
+    .topbar-title { font-weight: 600; font-size: 1rem; }
+    .topbar-spacer { flex: 1; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 16px;
+      border-radius: var(--radius);
+      border: none;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: .87rem;
+      font-weight: 500;
+      transition: all .15s;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-danger:hover { opacity: .88; }
+    .btn-warning { background: var(--warning); color: #000; }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-ghost { background: var(--bg3); color: var(--text); border: 1px solid var(--border); }
+    .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-sm { padding: 4px 10px; font-size: .8rem; }
+
+    .content { padding: 24px; overflow-y: auto; flex: 1; }
+
+    /* Cards */
+    .card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .card-title { font-size: 1rem; font-weight: 600; margin-bottom: 16px; }
+
+    /* Stats row */
+    .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 20px; }
+    .stat-card {
+      background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 18px 20px;
+    }
+    .stat-label { color: var(--text-muted); font-size: .8rem; margin-bottom: 6px; }
+    .stat-value { font-size: 2rem; font-weight: 700; }
+    .stat-value.success { color: var(--success); }
+    .stat-value.danger { color: var(--danger); }
+    .stat-value.warning { color: var(--warning); }
+    .stat-value.accent { color: var(--accent); }
+
+    /* Table */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+    th { text-align: right; padding: 10px 14px; color: var(--text-muted); font-weight: 500; border-bottom: 1px solid var(--border); white-space: nowrap; }
+    td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--bg3); }
+
+    /* Badge */
+    .badge {
+      display: inline-block; padding: 2px 10px; border-radius: 99px;
+      font-size: .75rem; font-weight: 600;
+    }
+    .badge-success { background: #14532d; color: #86efac; }
+    .badge-danger { background: #7f1d1d; color: #fca5a5; }
+    .badge-warning { background: #78350f; color: #fde68a; }
+    .badge-info { background: #1e3a5f; color: #93c5fd; }
+    .badge-muted { background: var(--bg3); color: var(--text-muted); }
+
+    /* Form */
+    .form-group { margin-bottom: 16px; }
+    label { display: block; margin-bottom: 6px; color: var(--text-muted); font-size: .85rem; }
+    input, select, textarea {
+      width: 100%; padding: 9px 12px;
+      background: var(--bg3); border: 1px solid var(--border);
+      color: var(--text); border-radius: 7px; font-family: inherit; font-size: .9rem;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none; border-color: var(--accent);
+    }
+
+    /* Modal */
+    .modal-backdrop {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.65); z-index: 100;
+      align-items: center; justify-content: center;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 24px; width: 480px; max-width: 95vw;
+    }
+    .modal-title { font-size: 1rem; font-weight: 600; margin-bottom: 16px; }
+    .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+
+    /* Toast */
+    #toast {
+      position: fixed; bottom: 24px; right: 24px;
+      background: var(--bg3); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 12px 18px;
+      font-size: .88rem; z-index: 200; display: none;
+      box-shadow: 0 8px 24px rgba(0,0,0,.4);
+    }
+    #toast.show { display: block; animation: fadeIn .2s; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+    .flex { display: flex; }
+    .items-center { align-items: center; }
+    .gap-2 { gap: 8px; }
+    .gap-4 { gap: 16px; }
+    .mb-4 { margin-bottom: 16px; }
+    .text-muted { color: var(--text-muted); }
+    .text-right { text-align: right; }
+    .font-mono { font-family: monospace; font-size: .85rem; letter-spacing: .03em; }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+      </svg>
+      LicensePanel
+    </div>
+    <nav class="sidebar-nav">
+      <a href="/panel" class="nav-item {% if active_page=='dashboard' %}active{% endif %}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+          <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
+        </svg>
+        داشبورد
+      </a>
+      <a href="/panel/products" class="nav-item {% if active_page=='products' %}active{% endif %}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 16V8a2 2 0 0 0-1-1.73L13 2.27a2 2 0 0 0-2 0L4 6.27A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4.04a2 2 0 0 0 2 0l7-4.04A2 2 0 0 0 21 16z"/>
+        </svg>
+        محصولات
+      </a>
+      <a href="/panel/licenses" class="nav-item {% if active_page=='licenses' %}active{% endif %}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+        لایسنس‌ها
+      </a>
+      <a href="/panel/audit" class="nav-item {% if active_page=='audit' %}active{% endif %}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 12l2 2 4-4"/><path d="M21 12c0 4.97-4.03 9-9 9S3 16.97 3 12 7.03 3 12 3s9 4.03 9 9z"/>
+        </svg>
+        لاگ فعالیت
+      </a>
+    </nav>
+    <div class="sidebar-footer" id="admin-info">بارگذاری...</div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <span class="topbar-title">{% block topbar_title %}{% endblock %}</span>
+      <span class="topbar-spacer"></span>
+      <button class="btn btn-ghost btn-sm" onclick="logout()">خروج</button>
+    </div>
+    <div class="content">
+      {% block content %}{% endblock %}
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <script>
+    // Auth guard
+    async function checkAuth() {
+      try {
+        const r = await fetch('/admin/api/auth/me');
+        if (!r.ok) { window.location.href = '/panel/login'; return; }
+        const d = await r.json();
+        document.getElementById('admin-info').textContent = d.email;
+      } catch { window.location.href = '/panel/login'; }
+    }
+
+    async function logout() {
+      await fetch('/admin/api/auth/logout', { method: 'POST' });
+      window.location.href = '/panel/login';
+    }
+
+    function toast(msg, type = 'info') {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.style.borderColor = type === 'success' ? 'var(--success)' : type === 'error' ? 'var(--danger)' : 'var(--border)';
+      el.className = 'show';
+      setTimeout(() => el.className = '', 3000);
+    }
+
+    async function api(url, opts = {}) {
+      const r = await fetch(url, {
+        headers: { 'Content-Type': 'application/json', ...opts.headers },
+        ...opts
+      });
+      if (r.status === 401) { window.location.href = '/panel/login'; return null; }
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.detail || 'خطا');
+      return data;
+    }
+
+    function statusBadge(status) {
+      const map = {
+        active: ['badge-success', 'فعال'],
+        suspended: ['badge-warning', 'تعلیق'],
+        revoked: ['badge-danger', 'لغو'],
+        expired: ['badge-muted', 'منقضی'],
+      };
+      const [cls, label] = map[status] || ['badge-muted', status];
+      return `<span class="badge ${cls}">${label}</span>`;
+    }
+
+    checkAuth();
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

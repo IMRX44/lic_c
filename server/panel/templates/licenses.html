@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+{% set active_page = "licenses" %}
+{% block title %}لایسنس‌ها - پنل مدیریت{% endblock %}
+{% block topbar_title %}مدیریت لایسنس‌ها{% endblock %}
+
+{% block content %}
+<div class="flex items-center gap-4 mb-4">
+  <input type="text" id="search" placeholder="جستجو در کلید یا مشتری..." style="max-width:280px" oninput="filterTable()" />
+  <select id="filter-status" onchange="loadLicenses()">
+    <option value="">همه وضعیت‌ها</option>
+    <option value="active">فعال</option>
+    <option value="suspended">تعلیق</option>
+    <option value="revoked">لغو</option>
+    <option value="expired">منقضی</option>
+  </select>
+  <div style="flex:1"></div>
+  <button class="btn btn-primary" onclick="openCreateModal()">+ لایسنس جدید</button>
+</div>
+
+<div class="card" style="padding:0">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>کلید لایسنس</th>
+          <th>محصول</th>
+          <th>مشتری</th>
+          <th>نوع</th>
+          <th>وضعیت</th>
+          <th>انقضا</th>
+          <th>سیت‌های زنده</th>
+          <th>دستکاری</th>
+          <th>عملیات</th>
+        </tr>
+      </thead>
+      <tbody id="lic-table"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Create Modal -->
+<div class="modal-backdrop" id="create-modal">
+  <div class="modal">
+    <div class="modal-title">ایجاد لایسنس جدید</div>
+    <div class="form-group">
+      <label>محصول</label>
+      <select id="new-product"></select>
+    </div>
+    <div class="form-group">
+      <label>نام مشتری</label>
+      <input type="text" id="new-name" placeholder="اختیاری" />
+    </div>
+    <div class="form-group">
+      <label>ایمیل مشتری</label>
+      <input type="email" id="new-email" placeholder="اختیاری" />
+    </div>
+    <div class="form-group">
+      <label>نوع لایسنس</label>
+      <select id="new-type" onchange="updateSeats()">
+        <option value="single">تک‌کاربره</option>
+        <option value="multi">چندکاربره</option>
+      </select>
+    </div>
+    <div class="form-group" id="seats-group" style="display:none">
+      <label>تعداد سیت</label>
+      <input type="number" id="new-seats" value="3" min="2" max="100" />
+    </div>
+    <div class="form-group">
+      <label>تاریخ انقضا</label>
+      <input type="datetime-local" id="new-expires" />
+    </div>
+    <div class="form-group">
+      <label>یادداشت</label>
+      <textarea id="new-notes" rows="2"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('create-modal')">انصراف</button>
+      <button class="btn btn-primary" onclick="createLicense()">ایجاد</button>
+    </div>
+  </div>
+</div>
+
+<!-- Detail Modal -->
+<div class="modal-backdrop" id="detail-modal">
+  <div class="modal" style="width:580px">
+    <div class="modal-title" id="detail-title">جزئیات لایسنس</div>
+    <div id="detail-content"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('detail-modal')">بستن</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let products = [];
+let allLicenses = [];
+
+async function loadProducts() {
+  products = await api('/admin/api/products') || [];
+  const sel = document.getElementById('new-product');
+  sel.innerHTML = products.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+}
+
+async function loadLicenses() {
+  const status = document.getElementById('filter-status').value;
+  allLicenses = await api(`/admin/api/licenses?limit=200${status?'&status='+status:''}`) || [];
+  renderTable(allLicenses);
+}
+
+function renderTable(licenses) {
+  document.getElementById('lic-table').innerHTML = licenses.map(l => `
+    <tr>
+      <td class="font-mono" style="font-size:.8rem">${l.key}</td>
+      <td>${l.product_name||'—'}</td>
+      <td>${l.customer_name||l.customer_email||'<span class="text-muted">—</span>'}</td>
+      <td><span class="badge badge-info">${l.license_type==='single'?'تک‌کاربره':'چندکاربره'}</span></td>
+      <td>${statusBadge(l.status)}</td>
+      <td class="text-muted" style="font-size:.8rem">${l.expires_at ? new Date(l.expires_at).toLocaleDateString('fa-IR') : '∞'}</td>
+      <td>${l.active_seats}/${l.max_seats}</td>
+      <td>${l.tamper_count > 0 ? `<span class="badge badge-danger">⚠ ${l.tamper_count}</span>` : '<span class="text-muted">—</span>'}</td>
+      <td>
+        <button class="btn btn-ghost btn-sm" onclick="showDetail('${l.id}')">جزئیات</button>
+        ${l.status==='active' ? `<button class="btn btn-warning btn-sm" onclick="suspendLic('${l.id}')">تعلیق</button>` : ''}
+        ${l.status==='active'||l.status==='suspended' ? `<button class="btn btn-danger btn-sm" onclick="revokeLic('${l.id}')">لغو</button>` : ''}
+        ${l.status!=='active' ? `<button class="btn btn-success btn-sm" onclick="reactivateLic('${l.id}')">فعال</button>` : ''}
+      </td>
+    </tr>
+  `).join('');
+}
+
+function filterTable() {
+  const q = document.getElementById('search').value.toLowerCase();
+  if (!q) { renderTable(allLicenses); return; }
+  renderTable(allLicenses.filter(l =>
+    l.key.toLowerCase().includes(q) ||
+    (l.customer_name||'').toLowerCase().includes(q) ||
+    (l.customer_email||'').toLowerCase().includes(q)
+  ));
+}
+
+async function showDetail(id) {
+  const lic = allLicenses.find(l => l.id === id);
+  if (!lic) return;
+  const acts = await api(`/admin/api/licenses/${id}/activations`);
+  document.getElementById('detail-title').textContent = `لایسنس: ${lic.key}`;
+  document.getElementById('detail-content').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+      <div><span class="text-muted">وضعیت</span><br/>${statusBadge(lic.status)}</div>
+      <div><span class="text-muted">انقضا</span><br/>${lic.expires_at?new Date(lic.expires_at).toLocaleString('fa-IR'):'بی‌نهایت'}</div>
+      <div><span class="text-muted">سیت‌ها</span><br/>${lic.active_seats}/${lic.max_seats} فعال</div>
+      <div><span class="text-muted">هشدار دستکاری</span><br/>${lic.tamper_count}</div>
+    </div>
+    <div style="font-size:.85rem;color:var(--text-muted);margin-bottom:8px">دستگاه‌های فعال‌سازی‌شده (${acts?.activations?.length||0})</div>
+    <div style="max-height:200px;overflow-y:auto">
+    ${(acts?.activations||[]).map(a => `
+      <div style="background:var(--bg3);border-radius:7px;padding:10px 12px;margin-bottom:8px;font-size:.82rem">
+        <span class="font-mono">${a.hwid_hash}</span>
+        <span style="margin-right:8px" class="badge ${a.is_active?'badge-success':'badge-muted'}">${a.is_active?'فعال':'غیرفعال'}</span>
+        <span class="text-muted"> | ${a.platform||'?'} | ${a.ip_address||'?'} | آخرین: ${new Date(a.last_seen).toLocaleString('fa-IR')}</span>
+      </div>
+    `).join('')}
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+      <button class="btn btn-ghost btn-sm" onclick="killSessions('${id}')">قطع همه سشن‌ها</button>
+      <button class="btn btn-ghost btn-sm" onclick="resetHwid('${id}')">ریست HWID</button>
+    </div>
+  `;
+  document.getElementById('detail-modal').classList.add('open');
+}
+
+async function suspendLic(id) {
+  if (!confirm('تعلیق این لایسنس؟ برنامه‌های در حال اجرا بلافاصله بسته می‌شوند.')) return;
+  try { await api(`/admin/api/licenses/${id}/suspend`, {method:'POST'}); toast('تعلیق شد', 'success'); loadLicenses(); }
+  catch(e) { toast(e.message, 'error'); }
+}
+
+async function revokeLic(id) {
+  if (!confirm('لغو دائمی این لایسنس؟')) return;
+  try { await api(`/admin/api/licenses/${id}/revoke`, {method:'POST'}); toast('لغو شد', 'success'); loadLicenses(); }
+  catch(e) { toast(e.message, 'error'); }
+}
+
+async function reactivateLic(id) {
+  try { await api(`/admin/api/licenses/${id}/reactivate`, {method:'POST'}); toast('فعال شد', 'success'); loadLicenses(); }
+  catch(e) { toast(e.message, 'error'); }
+}
+
+async function killSessions(id) {
+  try { const r = await api(`/admin/api/licenses/${id}/kill-sessions`, {method:'POST'}); toast(`${r.sessions_killed} سشن قطع شد`, 'success'); }
+  catch(e) { toast(e.message, 'error'); }
+}
+
+async function resetHwid(id) {
+  if (!confirm('ریست همه HWID؟')) return;
+  try { await api(`/admin/api/licenses/${id}/reset-hwid`, {method:'POST'}); toast('HWID ریست شد', 'success'); }
+  catch(e) { toast(e.message, 'error'); }
+}
+
+function openCreateModal() {
+  document.getElementById('create-modal').classList.add('open');
+}
+
+function updateSeats() {
+  const t = document.getElementById('new-type').value;
+  document.getElementById('seats-group').style.display = t==='multi' ? 'block' : 'none';
+}
+
+async function createLicense() {
+  const body = {
+    product_id: document.getElementById('new-product').value,
+    customer_name: document.getElementById('new-name').value||null,
+    customer_email: document.getElementById('new-email').value||null,
+    license_type: document.getElementById('new-type').value,
+    max_seats: document.getElementById('new-type').value==='multi' ? parseInt(document.getElementById('new-seats').value) : 1,
+    expires_at: document.getElementById('new-expires').value || null,
+    notes: document.getElementById('new-notes').value||null,
+  };
+  try {
+    const r = await api('/admin/api/licenses', {method:'POST', body:JSON.stringify(body)});
+    toast(`لایسنس ساخته شد: ${r.key}`, 'success');
+    closeModal('create-modal');
+    loadLicenses();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+loadProducts();
+loadLicenses();
+
+// Check URL param
+const params = new URLSearchParams(location.search);
+if (params.get('id')) {
+  setTimeout(() => showDetail(params.get('id')), 1000);
+}
+</script>
+{% endblock %}

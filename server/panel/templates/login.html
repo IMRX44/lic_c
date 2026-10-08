@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ورود - پنل مدیریت</title>
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0f1117; --bg2: #161b27; --bg3: #1e2433;
+      --border: #2a3147; --accent: #6366f1; --text: #e2e8f0;
+      --text-muted: #94a3b8; --danger: #ef4444;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Vazirmatn', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .login-box {
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 14px; padding: 40px 36px; width: 380px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.5);
+    }
+    .logo { text-align: center; margin-bottom: 28px; }
+    .logo svg { width: 48px; height: 48px; color: var(--accent); }
+    .logo h1 { font-size: 1.2rem; margin-top: 10px; font-weight: 700; }
+    .logo p { color: var(--text-muted); font-size: .85rem; margin-top: 4px; }
+    .form-group { margin-bottom: 16px; }
+    label { display: block; margin-bottom: 6px; color: var(--text-muted); font-size: .85rem; }
+    input {
+      width: 100%; padding: 10px 12px;
+      background: var(--bg3); border: 1px solid var(--border);
+      color: var(--text); border-radius: 8px; font-family: inherit; font-size: .9rem;
+    }
+    input:focus { outline: none; border-color: var(--accent); }
+    .btn {
+      width: 100%; padding: 11px;
+      background: var(--accent); color: #fff;
+      border: none; border-radius: 8px; cursor: pointer;
+      font-family: inherit; font-size: .95rem; font-weight: 600;
+      transition: opacity .15s; margin-top: 4px;
+    }
+    .btn:hover { opacity: .9; }
+    .btn:disabled { opacity: .6; cursor: not-allowed; }
+    .error { color: var(--danger); font-size: .83rem; margin-top: 10px; text-align: center; }
+    #totp-step { display: none; }
+  </style>
+</head>
+<body>
+<div class="login-box">
+  <div class="logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <rect x="3" y="11" width="18" height="11" rx="2"/>
+      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+    </svg>
+    <h1>پنل مدیریت لایسنس</h1>
+    <p>ورود به حساب ادمین</p>
+  </div>
+
+  <div id="main-step">
+    <div class="form-group">
+      <label>ایمیل</label>
+      <input type="email" id="email" placeholder="admin@example.com" />
+    </div>
+    <div class="form-group">
+      <label>رمز عبور</label>
+      <input type="password" id="password" placeholder="••••••••" />
+    </div>
+    <button class="btn" id="login-btn" onclick="doLogin()">ورود</button>
+  </div>
+
+  <div id="totp-step">
+    <div class="form-group">
+      <label>کد احراز هویت دو مرحله‌ای</label>
+      <input type="text" id="totp" placeholder="123456" maxlength="6" style="letter-spacing:.2em;text-align:center;font-size:1.3rem;" />
+    </div>
+    <button class="btn" id="totp-btn" onclick="doTotp()">تأیید</button>
+  </div>
+
+  <div class="error" id="error"></div>
+</div>
+
+<script>
+  async function doLogin() {
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    if (!email || !password) { showError('ایمیل و رمز عبور را وارد کنید'); return; }
+
+    document.getElementById('login-btn').disabled = true;
+    try {
+      const r = await fetch('/admin/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await r.json();
+      if (!r.ok) { showError(data.detail || 'خطا در ورود'); return; }
+      if (data.requires_totp) {
+        document.getElementById('main-step').style.display = 'none';
+        document.getElementById('totp-step').style.display = 'block';
+        document.getElementById('totp').focus();
+        return;
+      }
+      window.location.href = '/panel';
+    } catch { showError('خطا در اتصال به سرور'); }
+    finally { document.getElementById('login-btn').disabled = false; }
+  }
+
+  async function doTotp() {
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const totp_code = document.getElementById('totp').value.trim();
+    document.getElementById('totp-btn').disabled = true;
+    try {
+      const r = await fetch('/admin/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, totp_code }),
+      });
+      const data = await r.json();
+      if (!r.ok) { showError(data.detail || 'کد اشتباه است'); return; }
+      window.location.href = '/panel';
+    } catch { showError('خطا'); }
+    finally { document.getElementById('totp-btn').disabled = false; }
+  }
+
+  function showError(msg) {
+    document.getElementById('error').textContent = msg;
+    setTimeout(() => document.getElementById('error').textContent = '', 4000);
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      if (document.getElementById('totp-step').style.display === 'block') doTotp();
+      else doLogin();
+    }
+  });
+</script>
+</body>
+</html>
