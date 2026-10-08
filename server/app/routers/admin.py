@@ -28,6 +28,7 @@ from app.auth import (
 from app.crypto import generate_license_key, hash_password
 from app.websocket_manager import manager
 from app import redis_client
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/api", tags=["admin"])
