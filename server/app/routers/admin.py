@@ -63,11 +63,12 @@ async def admin_login(
     db.add(AuditLog(action=AuditAction.admin_login, admin_id=admin.id, ip_address=get_client_ip(request)))
     await db.commit()
 
+    https = settings.domain.startswith("https://")
     response.set_cookie(
         key="admin_session",
         value=token,
         httponly=True,
-        secure=True,
+        secure=https,
         samesite="strict",
         max_age=3600 * 8,
     )
