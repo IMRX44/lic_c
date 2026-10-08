@@ -2,7 +2,7 @@
 # ═══════════════════════════════════════════════════════
 #  LicenseSystem — Install Script
 #  Ubuntu 22.04 / 24.04
-#  اجرا: bash install.sh
+#  Usage: sudo bash install.sh
 # ═══════════════════════════════════════════════════════
 set -e
 
@@ -28,73 +28,75 @@ echo "  ────────────────────────
 echo ""
 
 # ─── Check root ───────────────────────────────────────────────────
-[[ $EUID -ne 0 ]] && error "این اسکریپت باید با root اجرا شود: sudo bash install.sh"
+[[ $EUID -ne 0 ]] && error "Must run as root: sudo bash install.sh"
 
 # ─── Gather config ────────────────────────────────────────────────
-info "تنظیمات نصب را وارد کنید:"
+info "Enter installation settings:"
 echo ""
 
-read -p "  دامنه یا IP سرور (مثلاً: license.mysite.com یا 1.2.3.4): " DOMAIN
-[[ -z "$DOMAIN" ]] && error "دامنه یا IP لازم است"
+read -p "  Server domain or IP (e.g. license.mysite.com or 1.2.3.4): " DOMAIN
+[[ -z "$DOMAIN" ]] && error "Domain or IP is required"
 
-read -p "  ایمیل ادمین: " ADMIN_EMAIL
+read -p "  Admin email: " ADMIN_EMAIL
 [[ -z "$ADMIN_EMAIL" ]] && ADMIN_EMAIL="admin@${DOMAIN}"
 
 while true; do
-  read -s -p "  رمز ادمین (حداقل ۱۲ کاراکتر): " ADMIN_PASS; echo ""
+  read -s -p "  Admin password (minimum 12 characters): " ADMIN_PASS; echo ""
   [[ ${#ADMIN_PASS} -ge 12 ]] && break
-  warn "رمز باید حداقل ۱۲ کاراکتر باشد"
+  warn "Password must be at least 12 characters"
 done
 
-read -p "  آیا SSL/TLS با Let's Encrypt می‌خواهید؟ (y/n) [y]: " USE_SSL
+read -p "  Enable SSL/TLS with Let's Encrypt? (y/n) [y]: " USE_SSL
 USE_SSL=${USE_SSL:-y}
 
 if [[ "$USE_SSL" == "y" ]]; then
-  read -p "  ایمیل برای Let's Encrypt: " SSL_EMAIL
+  read -p "  Email for Let's Encrypt: " SSL_EMAIL
   [[ -z "$SSL_EMAIL" ]] && SSL_EMAIL="$ADMIN_EMAIL"
 fi
 
 echo ""
-info "شروع نصب..."
+info "Starting installation..."
 echo ""
 
 # ─── Install Docker ───────────────────────────────────────────────
 if ! command -v docker &>/dev/null; then
-  info "نصب Docker..."
+  info "Installing Docker..."
   curl -fsSL https://get.docker.com | sh
   systemctl enable docker
   systemctl start docker
-  success "Docker نصب شد"
+  success "Docker installed"
 else
-  success "Docker از قبل نصب است"
+  success "Docker already installed"
 fi
 
 if ! command -v docker-compose &>/dev/null && ! docker compose version &>/dev/null 2>&1; then
-  info "نصب Docker Compose..."
+  info "Installing Docker Compose..."
   curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" \
     -o /usr/local/bin/docker-compose
   chmod +x /usr/local/bin/docker-compose
-  success "Docker Compose نصب شد"
+  success "Docker Compose installed"
 else
-  success "Docker Compose از قبل نصب است"
+  success "Docker Compose already installed"
 fi
 
 # ─── Clone / Copy project ─────────────────────────────────────────
-info "آماده‌سازی پروژه در $INSTALL_DIR ..."
+info "Preparing project in $INSTALL_DIR ..."
 mkdir -p "$INSTALL_DIR"
 
 if [[ -f "$(dirname "$0")/server/app/main.py" ]]; then
   # Running from repo directory
   cp -r "$(dirname "$0")/server/." "$INSTALL_DIR/"
 else
-  error "این اسکریپت باید از داخل پوشه‌ی پروژه اجرا شود"
+  error "This script must be run from inside the project directory"
 fi
 
 # ─── Generate secrets ─────────────────────────────────────────────
-info "تولید کلیدهای امنیتی..."
+info "Generating security keys..."
 SECRET_KEY=$(openssl rand -hex 32)
 PG_PASS=$(openssl rand -hex 16)
 REDIS_PASS=$(openssl rand -hex 16)
+# Random port between 20000-60000 (avoids well-known port ranges)
+APP_PORT=$(( RANDOM % 40000 + 20000 ))
 
 mkdir -p "$INSTALL_DIR/keys"
 
@@ -115,7 +117,7 @@ POSTGRES_PASSWORD=${PG_PASS}
 REDIS_PASSWORD=${REDIS_PASS}
 EOF
 chmod 600 "$INSTALL_DIR/.env"
-success ".env ساخته شد"
+success ".env created"
 
 # ─── Update docker-compose with real passwords ────────────────────
 sed -i "s/\${POSTGRES_PASSWORD:-changeme}/${PG_PASS}/g" "$INSTALL_DIR/docker-compose.yml"
@@ -128,29 +130,29 @@ sed -i "s/\${ADMIN_PASSWORD:-change-this}/${ADMIN_PASS}/g" "$INSTALL_DIR/docker-
 mkdir -p "$INSTALL_DIR/certs"
 
 if [[ "$USE_SSL" == "y" ]]; then
-  info "نصب Certbot..."
+  info "Installing Certbot..."
   apt-get update -qq
   apt-get install -y -qq certbot
 
   # Temporarily stop port 80 if anything is running
   fuser -k 80/tcp 2>/dev/null || true
 
-  info "دریافت گواهی SSL..."
+  info "Obtaining SSL certificate..."
   certbot certonly --standalone \
     --non-interactive \
     --agree-tos \
     --email "$SSL_EMAIL" \
-    -d "$DOMAIN" || warn "SSL ناموفق بود — با self-signed ادامه می‌دهیم"
+    -d "$DOMAIN" || warn "SSL failed — continuing with self-signed certificate"
 
   if [[ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]]; then
     cp "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" "$INSTALL_DIR/certs/"
     cp "/etc/letsencrypt/live/${DOMAIN}/privkey.pem" "$INSTALL_DIR/certs/"
     # Auto-renew cron
     (crontab -l 2>/dev/null; echo "0 3 * * * certbot renew --quiet && cp /etc/letsencrypt/live/${DOMAIN}/fullchain.pem ${INSTALL_DIR}/certs/ && cp /etc/letsencrypt/live/${DOMAIN}/privkey.pem ${INSTALL_DIR}/certs/ && docker compose -f ${INSTALL_DIR}/docker-compose.yml restart nginx") | crontab -
-    success "SSL گواهی دریافت شد"
+    success "SSL certificate obtained"
     SSL_OK=true
   else
-    warn "SSL ناموفق — self-signed گواهی می‌سازیم"
+    warn "SSL failed — generating self-signed certificate"
     SSL_OK=false
   fi
 else
@@ -158,24 +160,83 @@ else
 fi
 
 if [[ "$SSL_OK" != "true" ]]; then
-  info "ساخت self-signed certificate..."
+  info "Generating self-signed certificate..."
   openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
     -keyout "$INSTALL_DIR/certs/privkey.pem" \
     -out "$INSTALL_DIR/certs/fullchain.pem" \
     -subj "/CN=${DOMAIN}" 2>/dev/null
-  warn "Self-signed certificate ساخته شد (مرورگر هشدار می‌دهد)"
+  warn "Self-signed certificate created (browser will show a warning)"
 fi
 
 # ─── Update nginx.conf with domain ───────────────────────────────
 sed -i "s/yourdomain.com/${DOMAIN}/g" "$INSTALL_DIR/nginx.conf"
 
+# Write nginx config — nginx inside container always listens on 80 (HTTP) or 443 (HTTPS)
+# The random port is only on the host side of the Docker port mapping
+if [[ "$SSL_OK" == "true" ]]; then
+  cat > "$INSTALL_DIR/nginx.conf" <<NGINXEOF
+server {
+    listen 443 ssl;
+    server_name ${DOMAIN};
+
+    ssl_certificate /etc/nginx/certs/fullchain.pem;
+    ssl_certificate_key /etc/nginx/certs/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    add_header X-Frame-Options DENY;
+    add_header X-Content-Type-Options nosniff;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+
+    location /api/ {
+        proxy_pass http://app:8000;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Forwarded-For \$remote_addr;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600;
+    }
+    location /panel { proxy_pass http://app:8000; proxy_set_header Host \$host; proxy_set_header X-Forwarded-For \$remote_addr; }
+    location /admin { proxy_pass http://app:8000; proxy_set_header Host \$host; proxy_set_header X-Forwarded-For \$remote_addr; }
+    location /static/ { proxy_pass http://app:8000; }
+    location /health { proxy_pass http://app:8000; access_log off; }
+    location / { proxy_pass http://app:8000; proxy_set_header Host \$host; }
+}
+NGINXEOF
+else
+  cat > "$INSTALL_DIR/nginx.conf" <<NGINXEOF
+server {
+    listen 80;
+    server_name ${DOMAIN};
+
+    add_header X-Frame-Options DENY;
+    add_header X-Content-Type-Options nosniff;
+
+    location /api/ {
+        proxy_pass http://app:8000;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Forwarded-For \$remote_addr;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600;
+    }
+    location /panel { proxy_pass http://app:8000; proxy_set_header Host \$host; proxy_set_header X-Forwarded-For \$remote_addr; }
+    location /admin { proxy_pass http://app:8000; proxy_set_header Host \$host; proxy_set_header X-Forwarded-For \$remote_addr; }
+    location /static/ { proxy_pass http://app:8000; }
+    location /health { proxy_pass http://app:8000; access_log off; }
+    location / { proxy_pass http://app:8000; proxy_set_header Host \$host; }
+}
+NGINXEOF
+fi
+
 # ─── Build and start ──────────────────────────────────────────────
-info "Build و start کردن Docker..."
+info "Building and starting Docker containers..."
 cd "$INSTALL_DIR"
 docker compose up -d --build
 
 # ─── Systemd service (auto-restart on reboot) ─────────────────────
-info "ساخت systemd service..."
+info "Creating systemd service..."
 cat > "/etc/systemd/system/${SERVICE_NAME}.service" <<EOF
 [Unit]
 Description=LicenseSystem
@@ -196,19 +257,35 @@ EOF
 
 systemctl daemon-reload
 systemctl enable "$SERVICE_NAME"
-success "Systemd service فعال شد (بعد از ریبوت هم اجرا می‌شود)"
+success "Systemd service enabled (auto-starts on reboot)"
+
+# ─── Update docker-compose to expose the random port ─────────────
+# nginx container listens on 80 (HTTP) or 443 (HTTPS) inside; host exposes APP_PORT
+if [[ "$SSL_OK" == "true" ]]; then
+  sed -i "s/\"80:80\"/\"${APP_PORT}:80\"/g; s/\"443:443\"/\"${APP_PORT}:443\"/g" "$INSTALL_DIR/docker-compose.yml"
+else
+  sed -i "s/\"80:80\"/\"${APP_PORT}:80\"/g; s/\"443:443\"/\"${APP_PORT}:80\"/g" "$INSTALL_DIR/docker-compose.yml"
+fi
+
+# ─── Open firewall port ───────────────────────────────────────────
+info "Opening firewall port ${APP_PORT}..."
+if command -v ufw &>/dev/null && ufw status | grep -q "Status: active"; then
+  ufw allow "${APP_PORT}/tcp"
+  success "Firewall: port ${APP_PORT} opened"
+fi
 
 # ─── Wait for server to be ready ──────────────────────────────────
-info "منتظر راه‌اندازی سرور..."
+info "Waiting for server to start..."
 for i in $(seq 1 30); do
-  if curl -sf "http://localhost:8000/health" &>/dev/null; then
+  if curl -sf "http://localhost:${APP_PORT}/health" &>/dev/null || curl -sf "http://localhost:8000/health" &>/dev/null; then
+    success "Server is ready!"
     break
   fi
   sleep 2
 done
 
 # ─── Get Ed25519 public key ───────────────────────────────────────
-info "دریافت کلید عمومی Ed25519..."
+info "Getting Ed25519 public key..."
 sleep 3
 PUB_KEY=$(docker compose exec -T app python3 -c "
 from app.crypto import load_or_generate_keys, get_public_key_hex
@@ -219,34 +296,41 @@ print(get_public_key_hex())
 # ─── Done ─────────────────────────────────────────────────────────
 echo ""
 echo -e "${GREEN}═══════════════════════════════════════════════════════${NC}"
-echo -e "${GREEN}  ✅ نصب کامل شد!${NC}"
+echo -e "${GREEN}  Installation Complete!${NC}"
 echo -e "${GREEN}═══════════════════════════════════════════════════════${NC}"
 echo ""
-echo -e "  🌐 پنل ادمین:  ${BLUE}https://${DOMAIN}/panel${NC}"
-echo -e "  📧 ایمیل:      ${YELLOW}${ADMIN_EMAIL}${NC}"
-echo -e "  🔑 رمز:        ${YELLOW}${ADMIN_PASS}${NC}"
+if [[ "$SSL_OK" == "true" ]]; then
+  PANEL_URL="https://${DOMAIN}:${APP_PORT}/panel"
+else
+  PANEL_URL="http://${DOMAIN}:${APP_PORT}/panel"
+fi
+echo -e "  Admin Panel:  ${BLUE}${PANEL_URL}${NC}"
+echo -e "  Port:         ${YELLOW}${APP_PORT}${NC}"
+echo -e "  Email:        ${YELLOW}${ADMIN_EMAIL}${NC}"
+echo -e "  Password:     ${YELLOW}${ADMIN_PASS}${NC}"
 echo ""
 if [[ -n "$PUB_KEY" ]]; then
-echo -e "  🔐 کلید عمومی Ed25519 (برای build کلاینت):"
+echo -e "  Ed25519 Public Key (for client build):"
 echo -e "  ${YELLOW}${PUB_KEY}${NC}"
 echo ""
-echo -e "  این کلید را برای build کلاینت Rust نگه دارید:"
+echo -e "  Use these for building the Rust client:"
 echo -e "  ${BLUE}export SERVER_PUBLIC_KEY_HEX=\"${PUB_KEY}\"${NC}"
 echo -e "  ${BLUE}export LICENSE_SERVER_URL=\"https://${DOMAIN}\"${NC}"
 fi
 echo ""
-echo -e "  📂 پروژه:      ${INSTALL_DIR}"
-echo -e "  📋 لاگ:        ${BLUE}docker compose -C ${INSTALL_DIR} logs -f app${NC}"
-echo -e "  🔄 ریستارت:    ${BLUE}systemctl restart ${SERVICE_NAME}${NC}"
+echo -e "  Project Dir:   ${INSTALL_DIR}"
+echo -e "  Logs:          ${BLUE}docker compose -f ${INSTALL_DIR}/docker-compose.yml logs -f app${NC}"
+echo -e "  Restart:       ${BLUE}systemctl restart ${SERVICE_NAME}${NC}"
 echo ""
 
 # Save info to file
 cat > "$INSTALL_DIR/install-info.txt" <<EOF
 Install Date: $(date)
 Domain: ${DOMAIN}
+Port: ${APP_PORT}
 Admin Email: ${ADMIN_EMAIL}
-Panel URL: https://${DOMAIN}/panel
+Panel URL: ${PANEL_URL}
 ED25519 Public Key: ${PUB_KEY}
 EOF
 chmod 600 "$INSTALL_DIR/install-info.txt"
-success "اطلاعات نصب در $INSTALL_DIR/install-info.txt ذخیره شد"
+success "Install info saved to $INSTALL_DIR/install-info.txt"
