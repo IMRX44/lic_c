@@ -20,12 +20,13 @@ from app.schemas import (
     ProductCreate, ProductResponse, AuditLogResponse,
     AdminLoginRequest,
 )
+import pyotp
 from app.auth import (
     get_current_admin, authenticate_admin,
     create_admin_session, delete_admin_session,
     generate_totp_setup,
 )
-from app.crypto import generate_license_key, hash_password
+from app.crypto import generate_license_key, hash_password, verify_password
 from app.websocket_manager import manager
 from app import redis_client
 from app.config import settings
@@ -50,18 +51,32 @@ async def admin_login(
     response: Response,
     db: AsyncSession = Depends(get_db),
 ):
-    admin = await authenticate_admin(
-        req.email, req.password, req.totp_code, db, get_client_ip(request)
+    ip = get_client_ip(request)
+
+    # Step 1: find user and verify password
+    result = await db.execute(
+        select(AdminUser).where(AdminUser.email == req.email, AdminUser.is_active == True)
     )
-    if admin is None:
+    admin = result.scalar_one_or_none()
+
+    if not admin or not verify_password(req.password, admin.password_hash):
+        db.add(AuditLog(action=AuditAction.admin_login_failed, ip_address=ip, detail=f"email={req.email}"))
+        await db.commit()
         raise HTTPException(401, "Invalid credentials")
 
-    if admin.totp_enabled and not req.totp_code:
-        return {"requires_totp": True}
+    # Step 2: TOTP check (only after password is confirmed correct)
+    if admin.totp_enabled:
+        if not req.totp_code:
+            return {"requires_totp": True}
+        if not pyotp.TOTP(admin.totp_secret).verify(req.totp_code, valid_window=1):
+            db.add(AuditLog(action=AuditAction.admin_login_failed, admin_id=admin.id, ip_address=ip, detail="wrong_totp"))
+            await db.commit()
+            raise HTTPException(401, "Invalid TOTP code")
 
+    # Step 3: create session
     token = await create_admin_session(admin.id)
     admin.last_login = datetime.utcnow()
-    db.add(AuditLog(action=AuditAction.admin_login, admin_id=admin.id, ip_address=get_client_ip(request)))
+    db.add(AuditLog(action=AuditAction.admin_login, admin_id=admin.id, ip_address=ip))
     await db.commit()
 
     https = settings.domain.startswith("https://")
